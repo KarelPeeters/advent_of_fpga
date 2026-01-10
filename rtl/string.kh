@@ -1,0 +1,91 @@
+import common.[axi_stream, Point, char, char_newline, char_comma, char_digit_0];
+
+// Parse a stream of ascii characters into a stream of points.
+// TODO expand to parse multiple values in parallel
+module parse(
+    // The maximum value of the coordinates (exclusive).
+    M: uint,
+
+    type Coord = uint(0..M);
+    type Point = Point(Coord);
+) ports(
+    clk: in clock,
+    rst: in async bool,
+
+    sync(clk, rst) {
+        input: interface axi_stream(char).input,
+        output: interface axi_stream(Point).output,
+    }
+) {
+    reg after_comma: bool = false;
+    reg value_x: Coord = 0;
+    reg value_y: Coord = 0;
+
+    reg output_buffer_valid: bool = false;
+    reg output_buffer_data: Point = undef;
+
+    clocked(clk, async rst) {
+        output_valid = false;
+        output_data = Point.new(x=0, y=0);
+
+        // input handshake
+        if (input_ready && input.valid) {
+            val c: char = input.data;
+
+            match (c) {
+                in char_digit_0..(char_digit_0 + 10) => {
+                    val digit: int(0..10) = c - char_digit_0;
+                    if (after_comma) {
+                        assert_assume(value_y < M / 10, "value_y overflow");
+                        value_y = value_y * 10 + digit;
+                    } else {
+                        assert_assume(value_x < M / 10, "value_x overflow");
+                        value_x = value_x * 10 + digit;
+                    }
+                }
+                char_comma => {
+                    after_comma = true;
+                }
+                char_newline => {
+                    assert(!output_buffer_valid);
+                    output_buffer_valid = true;
+                    output_buffer_data = Point.new(x=value_x, y=value_y);
+
+                    value_x = 0;
+                    value_y = 0;
+                    after_comma = false;
+                }
+                _ => {
+                    assert(false, "unexpected character {c}");
+                }
+            }
+        }
+
+        // output handshake
+        if (output_valid && output.ready) {
+            output_valid = false;
+        }
+        if (!output_valid) {
+            output_valid = output_buffer_valid;
+            output_data = output_buffer_data;
+            output_buffer_valid = false;
+        }
+
+        // only accept new input if we have somewhere to put it
+        input_ready = !output_buffer_valid;
+    }
+
+    // intermediate registers, we don't support interface output registers yet
+    reg input_ready: bool = false;
+    reg output_valid: bool = false;
+    reg output_data: Point = undef;
+    comb {
+        input.ready = input_ready;
+        output.valid = output_valid;
+        output.data = output_data;
+    }
+}
+
+const {
+    parse(10**5);
+}

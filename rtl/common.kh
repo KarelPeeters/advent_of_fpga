@@ -1,0 +1,29 @@
+pub interface axi_stream(T: type) {
+    data: T,
+    valid: bool,
+    ready: bool,
+
+    interface input {
+        ready: out,
+        data: in,
+        valid: in,
+    }
+    interface output {
+        ready: in,
+        data: out,
+        valid: out,
+    }
+}
+
+pub struct Point(T: type) {
+    x: T,
+    y: T,
+}
+
+pub type char = uint(8);
+pub const char_eof: char = 0;
+pub const char_newline: char = 0x0a;
+pub const char_space: char = 0x20;
+
+pub const char_digit_0: char = 0x30;
+pub const char_comma: char = 0x2C;
