@@ -1,6 +1,7 @@
 import common.[char, Point as PointGeneral, axi_stream];
 import string.[parse_points, int_to_chars];
 import xilinx_uram.[uram, uram_port];
+import core.core;
 
 const COORD_LIMIT = 10**5;
 type Coord = uint(0..COORD_LIMIT);
@@ -20,100 +21,9 @@ module top ports(
     }
 ) {
     wire input_points: interface axi_stream(Tuple(bool, Point));
-    instance parse_points(M=COORD_LIMIT) ports(clk, rst, input, output=input_points);
     wire output_ints: interface axi_stream(Area);
+
+    instance parse_points(M=COORD_LIMIT) ports(clk, rst, input, output=input_points);
+    instance core(COORD_LIMIT=COORD_LIMIT) ports(clk, rst, input_points=input_points, output_area=output_ints);
     instance int_to_chars(M=AREA_LIMIT) ports(clk, rst, input=output_ints, output);
-
-    enum State {
-        AcceptInput,
-        Calculate,
-        Output,
-    }
-
-    reg state: State = State.AcceptInput;
-
-    reg ram: [MAX_POINT_COUNT]Point = undef;
-    reg point_count: uint(0..=MAX_POINT_COUNT) = 0;
-
-    reg max_area: Area = 0;
-    reg point_index_a: uint(0..MAX_POINT_COUNT) = 0;
-    reg point_index_b: uint(0..MAX_POINT_COUNT) = 0;
-
-    clocked(clk, async rst) {
-        // input handshake
-        if (input_points_ready && input_points.valid) {
-            if (input_points.data.0) {
-                assert_assume(point_count < MAX_POINT_COUNT);
-                ram[point_count] = input_points.data.1;
-                point_count += 1;
-            } else {
-                max_area = 0;
-                point_index_a = 0;
-                point_index_b = 0;
-                if (point_count == 0) {
-                    state = State.Output;
-                } else {
-                    state = State.Calculate;
-                }
-            }
-        }
-
-        // output handshake
-        if (output_ints_valid && output_ints.ready) {
-            output_ints_valid = false;
-        }
-
-        // state machine
-        input_points_ready = false;
-        match (state) {
-            .AcceptInput => {
-                input_points_ready = true;
-            }
-            .Calculate => {
-                val point_a = ram[point_index_a];
-                val point_b = ram[point_index_b];
-
-                // TODO map to DSP module, maybe fiddle with +- 1 a bit
-                // TODO pipeline this, maybe abs/mul/max steps?
-                val area = (abs(point_a.x - point_b.x) + 1) * (abs(point_a.y - point_b.y) + 1);
-
-                max_area = max(max_area, area);
-
-                // increment indices
-                // TODO rewrite this
-                val new_point_index_a = point_index_a + 1;
-                if (new_point_index_a == point_count) {
-                    point_index_a = 0;
-
-                    val new_point_index_b = point_index_b + 1;
-                    if (new_point_index_b == point_count) {
-                        state = State.Output;
-                    } else {
-                        assert_assume(point_index_b < MAX_POINT_COUNT - 1);
-                        point_index_b += 1;
-                    }
-                } else {
-                    assert_assume(point_index_a < MAX_POINT_COUNT - 1);
-                    point_index_a += 1;
-                }
-            }
-            .Output => {
-                if (!output_ints_valid) {
-                    output_ints_valid = true;
-                    output_ints_data = max_area;
-                    state = State.AcceptInput;
-                }
-            }
-        }
-    }
-
-    // intermediate registers, we don't support interface registers yet
-    reg input_points_ready: bool = false;
-    reg output_ints_valid: bool = false;
-    reg output_ints_data: Area = undef;
-    comb {
-        input_points.ready = input_points_ready;
-        output_ints.valid = output_ints_valid;
-        output_ints.data = output_ints_data;
-    }
 }
