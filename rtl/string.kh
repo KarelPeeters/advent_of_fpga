@@ -1,4 +1,5 @@
 import common.[axi_stream, Point, char, char_newline, char_comma, char_digit_0];
+import div.div_by_const;
 
 // Parse a stream of ascii characters into a stream of points.
 // TODO expand to parse multiple values in parallel
@@ -129,8 +130,11 @@ pub module int_to_chars(M: natural) ports(
             .CalcDigits => {
                 assert_assume(digit_count < MAX_DIGITS);
 
-                val digit = value % 10;
-                value = value / 10;
+                val div = div_by_const(M, value, 10);
+                val digit = value - div * 10;
+                assert_assume(0 <= digit && digit < 10);
+
+                value = div;
                 digits = [digit, *digits[..MAX_DIGITS - 1]];
                 digit_count += 1;
 

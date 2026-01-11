@@ -1,0 +1,38 @@
+// Vivado does not properly optimize division by a constant, so we implement it ourselves.
+// Variant of the Granlund-Montgomery-Warren Method for arbitrary non-power-of-two limits.
+pub fn div_by_const(m: natural, a: uint(0..m), b: natural) -> uint {
+    // require b to be constant, if not this function does not make sense
+    const b = b;
+
+    // division by power of two is just a shift, no magic needed
+    if (2**clog2(b) == b) {
+        return a / b;
+    }
+
+    // compute magic multiplier and shift amount
+    val magic;
+    var shift;
+    const {
+        shift = clog2(b);
+        while (true) {
+            val r = (2**shift) % b;
+            if (r == 0) {
+                magic = 2**shift / b;
+                break;
+            }
+            if ((b - r) * (m - 1) < 2**shift) {
+                magic = (2**shift + b - r) / b;
+                break;
+            }
+            shift += 1;
+        }
+    }
+
+    // operation itself
+    val result = (a * magic) / 2**shift;
+
+    // tell the type system that the result is actually just the division
+    assert_assume(result == a / b);
+
+    return result;
+}
