@@ -55,7 +55,7 @@ pub module core(COORD_LIMIT: natural) ports(
         // state machine
         input_points_ready = false;
         pipe_index_valid = false;
-        pipe_emit_output = Option.None;
+        back_emit_output = Option.None;
 
         match (front_state) {
             .Input => {
@@ -86,11 +86,11 @@ pub module core(COORD_LIMIT: natural) ports(
             }
             .OutputStart => {
                 // TODO skip this state, wa can inline this away
-                pipe_emit_output = Option.Some(front_point_count != 0);
+                back_emit_output = Option.Some(front_point_count != 0);
                 front_state = FrontState.OutputWait;
             }
             .OutputWait => {
-                if (pipe_emit_output_done) {
+                if (back_emit_output_done) {
                     front_state = FrontState.Input;
                 }
             }
@@ -98,12 +98,26 @@ pub module core(COORD_LIMIT: natural) ports(
     }
 
     // pipeline/back
+    // TODO try this with register expressions
+    const P = 3 + 1;
     reg pipe_index_valid: bool = false;
-    reg pipe_index_a: uint(0..MAX_POINT_COUNT) = 0;
-    reg pipe_index_b: uint(0..MAX_POINT_COUNT) = 0;
+    reg pipe_index_a: uint(0..MAX_POINT_COUNT) = undef;
+    reg pipe_index_b: uint(0..MAX_POINT_COUNT) = undef;
 
-    reg pipe_emit_output: Option(bool) = Option.None;
-    reg pipe_emit_output_done: bool = false;
+    reg pipe_point_valid: bool = false;
+    reg pipe_point_a: Point = undef;
+    reg pipe_point_b: Point = undef;
+
+    reg pipe_abs_valid: bool = false;
+    reg pipe_abs_a: uint(0..COORD_LIMIT + 1) = undef;
+    reg pipe_abs_b: uint(0..COORD_LIMIT + 1) = undef;
+
+    reg pipe_mul_valid: bool = false;
+    reg pipe_mul: uint(0..AREA_LIMIT) = undef;
+
+    reg back_emit_output: Option(bool) = Option.None;
+    reg back_emit_output_delay: [P]Option(bool) = [Option(bool).None] * P;
+    reg back_emit_output_done: bool = false;
 
     reg back_max_area: Area = 0;
 
@@ -111,11 +125,12 @@ pub module core(COORD_LIMIT: natural) ports(
         // output handshake
         if (output_area_valid && output_area.ready) {
             output_area_valid = false;
-            pipe_emit_output_done = true;
+            back_emit_output_done = true;
         }
 
         // push output
-        match (pipe_emit_output) {
+        back_emit_output_delay = [*back_emit_output_delay[1..], back_emit_output];
+        match (back_emit_output_delay[0]) {
             .Some(val any_points) => {
                 var send_area = back_max_area;
                 if (send_area == 0 && any_points) {
@@ -130,15 +145,20 @@ pub module core(COORD_LIMIT: natural) ports(
         }
 
         // pipeline
-        if (pipe_index_valid) {
-            val point_a = ram[front_index_a];
-            val point_b = ram[front_index_b];
-
-            // TODO map to DSP module, maybe fiddle with +- 1 a bit
-            // TODO pipeline this, maybe abs/mul/max steps?
-            val area = (abs(point_a.x - point_b.x) + 1) * (abs(point_a.y - point_b.y) + 1);
-            back_max_area = max(back_max_area, area);
+        if (pipe_mul_valid) {
+            back_max_area = max(back_max_area, pipe_mul);
         }
+
+        pipe_mul_valid = pipe_abs_valid;
+        pipe_mul = pipe_abs_a * pipe_abs_b;
+
+        pipe_abs_valid = pipe_point_valid;
+        pipe_abs_a = abs(pipe_point_a.x - pipe_point_b.x) + 1;
+        pipe_abs_b = abs(pipe_point_a.y - pipe_point_b.y) + 1;
+
+        pipe_point_valid = pipe_index_valid;
+        pipe_point_a = ram[pipe_index_a];
+        pipe_point_b = ram[pipe_index_b];
     }
 
     // intermediate registers, we don't support interface registers yet
