@@ -38,6 +38,9 @@ def send_axi_through_module(inst: hwl.VerilatedInstance, input_data: List, max_c
 
         # handle output handshake, collect output
         if ports.output_valid.value and ports.output_ready.value:
+            if not output:
+                print(f"First output at cycle {i}")
+
             output.append(ports.output_data.value)
         ports.output_ready.value = True
 

@@ -42,11 +42,11 @@ pub module core(COORD_LIMIT: natural) ports(
                 ram[front_point_count] = input_points.data.1;
                 front_point_count += 1;
             } else {
-                front_index_a = 0;
-                front_index_b = 0;
-                if (front_point_count == 0) {
+                if (front_point_count <= 1) {
                     front_state = FrontState.OutputStart;
                 } else {
+                    front_index_a = 1;
+                    front_index_b = 0;
                     front_state = FrontState.Calc;
                 }
             }
@@ -55,7 +55,7 @@ pub module core(COORD_LIMIT: natural) ports(
         // state machine
         input_points_ready = false;
         pipe_index_valid = false;
-        pipe_emit_output = false;
+        pipe_emit_output = Option.None;
 
         match (front_state) {
             .Input => {
@@ -67,26 +67,26 @@ pub module core(COORD_LIMIT: natural) ports(
                 pipe_index_a = front_index_a;
                 pipe_index_b = front_index_b;
 
-                // increment indices
-                val new_index_a = front_index_a + 1;
-                if (new_index_a == front_point_count) {
-                    front_index_a = 0;
+                // increment indices, only visiting a triangle
+                val new_index_b = front_index_b + 1;
+                if (new_index_b == front_index_a) {
+                    front_index_b = 0;
 
-                    val new_index_b = front_index_b + 1;
-                    if (new_index_b == front_point_count) {
+                    val new_index_a = front_index_a + 1;
+                    if (new_index_a == front_point_count) {
                         front_state = FrontState.OutputStart;
                     } else {
-                        assert_assume(front_index_b < MAX_POINT_COUNT - 1);
-                        front_index_b += 1;
+                        assert_assume(front_index_a < MAX_POINT_COUNT - 1, "a");
+                        front_index_a += 1;
                     }
                 } else {
-                    assert_assume(front_index_a < MAX_POINT_COUNT - 1);
-                    front_index_a += 1;
+                    assert_assume(front_index_b < MAX_POINT_COUNT - 1, "b");
+                    front_index_b += 1;
                 }
             }
             .OutputStart => {
                 // TODO skip this state, wa can inline this away
-                pipe_emit_output = true;
+                pipe_emit_output = Option.Some(front_point_count != 0);
                 front_state = FrontState.OutputWait;
             }
             .OutputWait => {
@@ -102,7 +102,7 @@ pub module core(COORD_LIMIT: natural) ports(
     reg pipe_index_a: uint(0..MAX_POINT_COUNT) = 0;
     reg pipe_index_b: uint(0..MAX_POINT_COUNT) = 0;
 
-    reg pipe_emit_output: bool = false;
+    reg pipe_emit_output: Option(bool) = Option.None;
     reg pipe_emit_output_done: bool = false;
 
     reg back_max_area: Area = 0;
@@ -115,10 +115,18 @@ pub module core(COORD_LIMIT: natural) ports(
         }
 
         // push output
-        if (pipe_emit_output) {
-            assert(!output_area_valid);
-            output_area_valid = true;
-            output_area_data = back_max_area;
+        match (pipe_emit_output) {
+            .Some(val any_points) => {
+                var send_area = back_max_area;
+                if (send_area == 0 && any_points) {
+                    send_area = 1;
+                }
+
+                assert(!output_area_valid);
+                output_area_valid = true;
+                output_area_data = send_area;
+            }
+            .None => {}
         }
 
         // pipeline
