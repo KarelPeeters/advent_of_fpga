@@ -2,7 +2,7 @@ import common.[axi_stream, Point, char, char_newline, char_comma, char_digit_0];
 
 // Parse a stream of ascii characters into a stream of points.
 // TODO expand to parse multiple values in parallel
-module parse(
+pub module parse(
     // The maximum value of the coordinates (exclusive).
     M: uint,
 

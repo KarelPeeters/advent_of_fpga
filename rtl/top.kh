@@ -1,19 +1,16 @@
 import common.[char, Point, axi_stream];
+import string.parse;
+
+const M = 10**5;
 
 module top ports(
     clk: in clock,
     rst: in async bool,
+
     sync(clk, rst) {
         input: interface axi_stream(char).input,
+        output: interface axi_stream(Point(uint(0..M))).output,
     }
 ) {
-    reg input_ready: bool = false;
-
-    clocked(clk, async rst) {
-        input_ready = false;
-    }
-
-    comb {
-        input.ready = input_ready;
-    }
+    instance parse(M) ports(clk, rst, input, output);
 }
