@@ -18,85 +18,118 @@ pub module core(COORD_LIMIT: natural) ports(
         output_area: interface axi_stream(Area).output,
     }
 ) {
-    enum State {
-        AcceptInput,
-        Calculate,
-        Output,
+    // shared ram
+    reg ram: [MAX_POINT_COUNT]Point = undef;
+
+    // front
+    enum FrontState {
+        Input,
+        Calc,
+        OutputStart,
+        OutputWait,
     }
 
-    reg state: State = State.AcceptInput;
-
-    reg ram: [MAX_POINT_COUNT]Point = undef;
-    reg point_count: uint(0..=MAX_POINT_COUNT) = 0;
-
-    reg max_area: Area = 0;
-    reg point_index_a: uint(0..MAX_POINT_COUNT) = 0;
-    reg point_index_b: uint(0..MAX_POINT_COUNT) = 0;
+    reg front_state: FrontState = FrontState.Input;
+    reg front_point_count: uint(0..=MAX_POINT_COUNT) = 0;
+    reg front_index_a: uint(0..MAX_POINT_COUNT) = 0;
+    reg front_index_b: uint(0..MAX_POINT_COUNT) = 0;
 
     clocked(clk, async rst) {
         // input handshake
         if (input_points_ready && input_points.valid) {
             if (input_points.data.0) {
-                assert_assume(point_count < MAX_POINT_COUNT);
-                ram[point_count] = input_points.data.1;
-                point_count += 1;
+                assert_assume(front_point_count < MAX_POINT_COUNT);
+                ram[front_point_count] = input_points.data.1;
+                front_point_count += 1;
             } else {
-                max_area = 0;
-                point_index_a = 0;
-                point_index_b = 0;
-                if (point_count == 0) {
-                    state = State.Output;
+                front_index_a = 0;
+                front_index_b = 0;
+                if (front_point_count == 0) {
+                    front_state = FrontState.OutputStart;
                 } else {
-                    state = State.Calculate;
+                    front_state = FrontState.Calc;
                 }
             }
-        }
-
-        // output handshake
-        if (output_area_valid && output_area.ready) {
-            output_area_valid = false;
         }
 
         // state machine
         input_points_ready = false;
-        match (state) {
-            .AcceptInput => {
+        pipe_index_valid = false;
+        pipe_emit_output = false;
+
+        match (front_state) {
+            .Input => {
                 input_points_ready = true;
             }
-            .Calculate => {
-                val point_a = ram[point_index_a];
-                val point_b = ram[point_index_b];
-
-                // TODO map to DSP module, maybe fiddle with +- 1 a bit
-                // TODO pipeline this, maybe abs/mul/max steps?
-                val area = (abs(point_a.x - point_b.x) + 1) * (abs(point_a.y - point_b.y) + 1);
-                max_area = max(max_area, area);
+            .Calc => {
+                // send calc packet
+                pipe_index_valid = true;
+                pipe_index_a = front_index_a;
+                pipe_index_b = front_index_b;
 
                 // increment indices
-                // TODO rewrite this
-                val new_point_index_a = point_index_a + 1;
-                if (new_point_index_a == point_count) {
-                    point_index_a = 0;
+                val new_index_a = front_index_a + 1;
+                if (new_index_a == front_point_count) {
+                    front_index_a = 0;
 
-                    val new_point_index_b = point_index_b + 1;
-                    if (new_point_index_b == point_count) {
-                        state = State.Output;
+                    val new_index_b = front_index_b + 1;
+                    if (new_index_b == front_point_count) {
+                        front_state = FrontState.OutputStart;
                     } else {
-                        assert_assume(point_index_b < MAX_POINT_COUNT - 1);
-                        point_index_b += 1;
+                        assert_assume(front_index_b < MAX_POINT_COUNT - 1);
+                        front_index_b += 1;
                     }
                 } else {
-                    assert_assume(point_index_a < MAX_POINT_COUNT - 1);
-                    point_index_a += 1;
+                    assert_assume(front_index_a < MAX_POINT_COUNT - 1);
+                    front_index_a += 1;
                 }
             }
-            .Output => {
-                if (!output_area_valid) {
-                    output_area_valid = true;
-                    output_area_data = max_area;
-                    state = State.AcceptInput;
+            .OutputStart => {
+                // TODO skip this state, wa can inline this away
+                pipe_emit_output = true;
+                front_state = FrontState.OutputWait;
+            }
+            .OutputWait => {
+                if (pipe_emit_output_done) {
+                    front_state = FrontState.Input;
                 }
             }
+        }
+    }
+
+    // pipeline/back
+    reg pipe_index_valid: bool = false;
+    reg pipe_index_a: uint(0..MAX_POINT_COUNT) = 0;
+    reg pipe_index_b: uint(0..MAX_POINT_COUNT) = 0;
+
+    reg pipe_emit_output: bool = false;
+    reg pipe_emit_output_done: bool = false;
+
+    reg back_max_area: Area = 0;
+
+    clocked(clk, async rst) {
+        // output handshake
+        if (output_area_valid && output_area.ready) {
+            output_area_valid = false;
+            pipe_emit_output_done = true;
+        }
+
+        // push output
+        if (pipe_emit_output) {
+            assert(!output_area_valid);
+            output_area_valid = true;
+            output_area_data = back_max_area;
+        }
+
+        // pipeline
+        if (pipe_index_valid) {
+            val point_a = ram[front_index_a];
+            val point_b = ram[front_index_b];
+
+            // TODO map to DSP module, maybe fiddle with +- 1 a bit
+            // TODO pipeline this, maybe abs/mul/max steps?
+            val area = (abs(point_a.x - point_b.x) + 1) * (abs(point_a.y - point_b.y) + 1);
+            back_max_area = max(back_max_area, area);
         }
     }
 
