@@ -1,17 +1,18 @@
 import common.[char, Point, axi_stream];
-import string.parse;
+import string.[parse_points, int_to_chars];
 import xilinx_uram.[uram, uram_port];
 
-const N = 2**(12 + 6);
-type T = [72]bool;
+// const N = 2**(12 + 6);
+// type T = [72]bool;
 
 module top ports(
     clk: in clock,
+    rst: in async bool,
 
-    sync(clk) {
-        port_a: interface uram_port(T, N).input,
-        port_b: interface uram_port(T, N).input,
+    sync(clk, rst) {
+        input: interface axi_stream(uint(0..10**5)).input,
+        output: interface axi_stream(char).output,
     }
 ) {
-    instance uram(N=N, T=T, P=3) ports(clk, port_a, port_b);
+    instance int_to_chars(M=10**5) ports(clk, rst, input, output);
 }
