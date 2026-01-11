@@ -1,2 +1,3 @@
-pytest
 maturin
+pytest
+pytest-xdist

@@ -70,7 +70,6 @@ pub module core(COORD_LIMIT: natural) ports(
                 // TODO map to DSP module, maybe fiddle with +- 1 a bit
                 // TODO pipeline this, maybe abs/mul/max steps?
                 val area = (abs(point_a.x - point_b.x) + 1) * (abs(point_a.y - point_b.y) + 1);
-
                 max_area = max(max_area, area);
 
                 // increment indices
