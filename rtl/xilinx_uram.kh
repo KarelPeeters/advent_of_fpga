@@ -1,0 +1,82 @@
+pub external module xilinx_ultraram_true_dual_port(
+    AWIDTH: natural = 12,
+    DWIDTH: natural = 72,
+    NBPIPE: natural = 3,
+) ports(
+    clk: in clock,
+
+    sync(clk) {
+        wea: in bool,
+        mem_ena: in bool,
+        dina: in [DWIDTH]bool,
+        addra: in [AWIDTH]bool,
+        douta: out [DWIDTH]bool,
+
+        web: in bool,
+        mem_enb: in bool,
+        dinb: in [DWIDTH]bool,
+        addrb: in [AWIDTH]bool,
+        doutb: out [DWIDTH]bool,
+    }
+)
+
+pub module uram(N: uint, T: type, P: uint) ports(
+    clk: in clock,
+
+    sync(clk) {
+        port_a: interface uram_port(T, N).input,
+        port_b: interface uram_port(T, N).input,
+    }
+) {
+    const AWIDTH = clog2(N);
+    const DWIDTH = T.size_bits;
+
+    wire read_data_a: [DWIDTH]bool;
+    wire read_data_b: [DWIDTH]bool;
+
+    instance xilinx_ultraram_true_dual_port(
+        AWIDTH=AWIDTH,
+        DWIDTH=DWIDTH,
+        NBPIPE=P,
+    ) ports(
+        clk,
+
+        wea=port_a.write_enable,
+        mem_ena=port_a.mem_enable,
+        dina=T.to_bits(port_a.write_data),
+        addra=uint(AWIDTH).to_bits(port_a.address),
+        douta=read_data_a,
+
+        web=port_b.write_enable,
+        mem_enb=port_b.mem_enable,
+        dinb=T.to_bits(port_b.write_data),
+        addrb=uint(AWIDTH).to_bits(port_b.address),
+        doutb=read_data_b,
+    );
+
+    comb {
+        port_a.read_data = T.from_bits_unsafe(read_data_a);
+        port_b.read_data = T.from_bits_unsafe(read_data_b);
+    }
+}
+
+pub interface uram_port(T: type, N: uint) {
+    mem_enable: bool,
+    write_enable: bool,
+    address: uint(0..N),
+    write_data: T,
+    read_data: T,
+
+    interface input {
+        mem_enable: in,
+        write_enable: in,
+        address: in,
+        write_data: in,
+        read_data: out,
+    }
+}
+
+const {
+    uram(T=bool, N=2, P=3);
+    uram(T=uint(0..3), N=2, P=3);
+}
