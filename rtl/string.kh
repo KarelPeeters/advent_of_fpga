@@ -25,13 +25,9 @@ pub module parse_points(
     reg output_buffer_data: Point = undef;
 
     clocked(clk, async rst) {
-        output_valid = false;
-        output_data = Point.new(x=0, y=0);
-
         // input handshake
         if (input_ready && input.valid) {
             val c: char = input.data;
-
             match (c) {
                 in char_digit_0..(char_digit_0 + 10) => {
                     val digit: int(0..10) = c - char_digit_0;
@@ -75,7 +71,7 @@ pub module parse_points(
         input_ready = !output_buffer_valid;
     }
 
-    // intermediate registers, we don't support interface output registers yet
+    // intermediate registers, we don't support interface registers yet
     reg input_ready: bool = false;
     reg output_valid: bool = false;
     reg output_data: Point = undef;
@@ -153,7 +149,7 @@ pub module int_to_chars(M: natural) ports(
         }
     }
 
-    // intermediate registers, we don't support interface output registers yet
+    // intermediate registers, we don't support interface registers yet
     reg input_ready: bool = false;
     reg output_valid: bool = false;
     reg output_data: char = undef;
