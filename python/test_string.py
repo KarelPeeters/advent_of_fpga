@@ -15,11 +15,24 @@ def test_parse_points(tmp_path: Path):
     inst = m.as_verilated(tmp_path).instance()
 
     random.seed(0x42)
-    samples = [(random.randrange(M), random.randrange(M)) for _ in range(sample_count)]
-    input_string = "\n".join(f"{x},{y}" for x, y in samples) + "\n"
+    expected_output = []
+    input_string = ""
+    any_zero = False
+
+    for i in range(sample_count):
+        if i % 20 == 0:
+            expected_output.append((False, (0, 0)))
+            input_string += "\0"
+            any_zero = True
+        else:
+            x = random.randrange(M)
+            y = random.randrange(M)
+            expected_output.append((True, (x, y)))
+            input_string += f"{x},{y}\n"
+    assert any_zero, "Test data should include at least one zero point"
 
     output = send_axi_through_module(inst, [ord(c) for c in input_string], max_cycles=len(input_string) + 16)
-    assert output == samples
+    assert output == expected_output
 
 
 def test_int_to_chars(tmp_path: Path):

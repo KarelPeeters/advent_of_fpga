@@ -14,7 +14,8 @@ pub module parse_points(
 
     sync(clk, rst) {
         input: interface axi_stream(char).input,
-        output: interface axi_stream(Point).output,
+        // TODO this should really be Option(Point), but the python verilator wrapper does not really support that yet
+        output: interface axi_stream(Tuple(bool, Point)).output,
     }
 ) {
     reg after_comma: bool = false;
@@ -22,7 +23,7 @@ pub module parse_points(
     reg value_y: Coord = 0;
 
     reg output_buffer_valid: bool = false;
-    reg output_buffer_data: Point = undef;
+    reg output_buffer_data: Tuple(bool, Point) = undef;
 
     clocked(clk, async rst) {
         // input handshake
@@ -45,11 +46,16 @@ pub module parse_points(
                 char_newline => {
                     assert(!output_buffer_valid);
                     output_buffer_valid = true;
-                    output_buffer_data = Point.new(x=value_x, y=value_y);
+                    output_buffer_data = (true, Point.new(x=value_x, y=value_y));
 
                     value_x = 0;
                     value_y = 0;
                     after_comma = false;
+                }
+                0 => {
+                    assert(!output_buffer_valid);
+                    output_buffer_valid = true;
+                    output_buffer_data = (false, Point.new(x=0, y=0));
                 }
                 _ => {
                     assert(false, "unexpected character {c}");
@@ -74,7 +80,7 @@ pub module parse_points(
     // intermediate registers, we don't support interface registers yet
     reg input_ready: bool = false;
     reg output_valid: bool = false;
-    reg output_data: Point = undef;
+    reg output_data: Tuple(bool, Point) = undef;
     comb {
         input.ready = input_ready;
         output.valid = output_valid;
