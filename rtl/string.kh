@@ -101,7 +101,8 @@ pub module int_to_chars(M: natural) ports(
     const MAX_DIGITS = clog(10, M);
     enum State {
         AcceptInput,
-        CalcDigits,
+        CalcDigitStage0,
+        CalcDigitStage1,
         EmitDigits,
     }
 
@@ -109,12 +110,13 @@ pub module int_to_chars(M: natural) ports(
     reg value: uint(0..M) = 0;
     reg digits: [MAX_DIGITS]uint(0..10) = [0] * MAX_DIGITS;
     reg digit_count: uint(0..MAX_DIGITS + 1) = 0;
+    reg div: uint(0..=(M - 1) / 10) = 0;
 
     clocked(clk, async rst) {
         // input handshake
         if (input_ready && input.valid) {
             value = input.data;
-            state = State.CalcDigits;
+            state = State.CalcDigitStage0;
         }
 
         // output handshake
@@ -127,10 +129,13 @@ pub module int_to_chars(M: natural) ports(
             .AcceptInput => {
                 input_ready = true;
             }
-            .CalcDigits => {
+            .CalcDigitStage0 => {
+                div = div_by_const(M, value, 10);
+                state = State.CalcDigitStage1;
+            }
+            .CalcDigitStage1 => {
                 assert_assume(digit_count < MAX_DIGITS);
 
-                val div = div_by_const(M, value, 10);
                 val digit = value - div * 10;
                 assert_assume(0 <= digit && digit < 10);
 
@@ -140,6 +145,8 @@ pub module int_to_chars(M: natural) ports(
 
                 if (value == 0) {
                     state = State.EmitDigits;
+                } else {
+                    state = State.CalcDigitStage0;
                 }
             }
             .EmitDigits => {
