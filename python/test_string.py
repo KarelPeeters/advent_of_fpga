@@ -48,6 +48,6 @@ def test_int_to_chars(tmp_path: Path):
     values = [random.randrange(M) for _ in range(sample_count)]
     expected_output_string = "\n".join(str(v) for v in values) + "\n"
 
-    output = send_axi_through_module(inst, values, max_cycles=4 * len(expected_output_string) + 16)
+    output = send_axi_through_module(inst, values, max_cycles=5 * len(expected_output_string) + 16)
     output_string = "".join(chr(x) for x in output)
     assert output_string == expected_output_string

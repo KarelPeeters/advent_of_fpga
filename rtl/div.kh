@@ -1,34 +1,85 @@
 // Vivado does not properly optimize division by a constant, so we implement it ourselves.
 // Variant of the Granlund-Montgomery-Warren Method for arbitrary non-power-of-two limits.
-pub fn div_by_const(m: natural, a: uint(0..m), b: natural) -> uint {
+pub struct DivMagic {
+    m: natural,
+    b: natural,
+    mul: uint,
+    shift: uint,
+}
+
+pub fn compute_div_magic(m: natural, b: natural) -> DivMagic {
     // require b to be constant, if not this function does not make sense
     const b = b;
 
-    // division by power of two is just a shift, no magic needed
-    if (2**clog2(b) == b) {
-        return a / b;
+    // division by power of two is just a shift
+    val b_log = clog2(b);
+    if (2**b_log == b) {
+        return DivMagic.new(m=m, b=b, mul=1, shift=b_log);
     }
 
     // compute magic multiplier and shift amount
-    val magic;
-    var shift;
-    const {
-        shift = clog2(b);
-        while (true) {
-            val r = (2**shift) % b;
-            if ((b - r) * (m - 1) < 2**shift) {
-                magic = (2**shift + b - r) / b;
-                break;
-            }
-            shift += 1;
+    var shift = clog2(b);
+    while (true) {
+        val r = (2**shift) % b;
+        if ((b - r) * (m - 1) < 2**shift) {
+            val magic = (2**shift + b - r) / b;
+            return DivMagic.new(m=m, b=b, mul=magic, shift=shift);
         }
+        shift += 1;
     }
+}
 
-    // operation itself
-    val result = (a * magic) / 2**shift;
+pub fn div_by_const(m: natural, a: uint(0..m), b: natural) -> uint {
+    val magic = compute_div_magic(m, b);
+    val result = (a * magic.mul) / 2**magic.shift;
 
     // tell the type system that the result is actually just the division
     assert_assume(result == a / b);
 
     return result;
+}
+
+pub struct DivPipeline(magic: DivMagic) {
+    const a_bits = clog2(magic.m);
+    const a_split = a_bits / 2;
+    const mul_bits = clog2(magic.mul);
+    const mul_split = mul_bits / 2;
+
+    low_low: uint(a_split + mul_split),
+    low_high: uint(a_split + mul_bits - mul_split),
+    high_low: uint(a_bits - a_split + mul_split),
+    high_high: uint(a_bits - a_split + mul_bits - mul_split),
+}
+
+pub fn div_by_const_pipelined_0(magic: DivMagic, a: uint(0..magic.m)) -> DivPipeline(magic) {
+    // split each operand in half
+    val a_split = clog2(magic.m) / 2;
+    val mul_split = clog2(magic.mul) / 2;
+
+    val a_low = a % 2**a_split;
+    val a_high = a / 2**a_split;
+    val mul_low = magic.mul % 2**mul_split;
+    val mul_high = magic.mul / 2**mul_split;
+
+    // compute partial products
+    return DivPipeline(magic).new(
+        low_low=a_low * mul_low,
+        low_high=a_low * mul_high,
+        high_low=a_high * mul_low,
+        high_high=a_high * mul_high,
+    );
+}
+
+pub fn div_by_const_pipelined_1(magic: DivMagic, p: DivPipeline(magic)) -> uint {
+    // add all partial products
+    val a_split = clog2(magic.m) / 2;
+    val mul_split = clog2(magic.mul) / 2;
+
+    val sum = p.low_low + p.low_high * 2**mul_split + p.high_low * 2**a_split + p.high_high * 2**(a_split + mul_split);
+
+    // tell type system about the actual bounds
+    assert_assume(0 <= sum && sum <= (magic.m - 1) * magic.mul);
+
+    // magic shift
+    return sum / 2**magic.shift;
 }
