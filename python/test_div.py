@@ -1,11 +1,7 @@
-"""Test to/from string modules"""
-
-from pathlib import Path
-from typing import List, Tuple
 import hwl
 import random
 
-from util import compile_manifest, send_axi_through_module
+from util import compile_manifest
 
 
 def test_div() -> None:
