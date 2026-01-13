@@ -104,17 +104,6 @@ pub module core(COORD_LIMIT: natural) ports(
     reg pipe_index_a: uint(0..MAX_POINT_COUNT) = undef;
     reg pipe_index_b: uint(0..MAX_POINT_COUNT) = undef;
 
-    reg pipe_point_valid: bool = false;
-    reg pipe_point_a: Point = undef;
-    reg pipe_point_b: Point = undef;
-
-    reg pipe_abs_valid: bool = false;
-    reg pipe_abs_a: uint(0..COORD_LIMIT + 1) = undef;
-    reg pipe_abs_b: uint(0..COORD_LIMIT + 1) = undef;
-
-    reg pipe_mul_valid: bool = false;
-    reg pipe_mul: uint(0..AREA_LIMIT) = undef;
-
     reg back_emit_output: Option(bool) = Option.None;
     reg back_emit_output_delay: [P]Option(bool) = [Option(bool).None] * P;
     reg back_emit_output_done: bool = false;
@@ -145,20 +134,22 @@ pub module core(COORD_LIMIT: natural) ports(
         }
 
         // pipeline
-        if (pipe_mul_valid) {
+        var valid = pipe_index_valid;
+
+        val pipe_point_a = reg(ram[pipe_index_a], undef);
+        val pipe_point_b = reg(ram[pipe_index_b], undef);
+        valid = reg(valid, false);
+
+        val pipe_abs_a = reg(abs(pipe_point_a.x - pipe_point_b.x) + 1, undef);
+        val pipe_abs_b = reg(abs(pipe_point_a.y - pipe_point_b.y) + 1, undef);
+        valid = reg(valid, false);
+
+        val pipe_mul = reg(pipe_abs_a * pipe_abs_b, undef);
+        valid = reg(valid, false);
+
+        if (valid) {
             back_max_area = max(back_max_area, pipe_mul);
         }
-
-        pipe_mul_valid = pipe_abs_valid;
-        pipe_mul = pipe_abs_a * pipe_abs_b;
-
-        pipe_abs_valid = pipe_point_valid;
-        pipe_abs_a = abs(pipe_point_a.x - pipe_point_b.x) + 1;
-        pipe_abs_b = abs(pipe_point_a.y - pipe_point_b.y) + 1;
-
-        pipe_point_valid = pipe_index_valid;
-        pipe_point_a = ram[pipe_index_a];
-        pipe_point_b = ram[pipe_index_b];
     }
 
     // intermediate registers, we don't support interface registers yet
