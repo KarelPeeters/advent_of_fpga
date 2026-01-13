@@ -19,7 +19,9 @@ pub module core(COORD_LIMIT: natural) ports(
     }
 ) {
     // shared ram
-    reg ram: [MAX_POINT_COUNT]Point = undef;
+    wire ram_port_a: sync(clk, rst) interface uram_port(Point, MAX_POINT_COUNT);
+    wire ram_port_b: sync(clk, rst) interface uram_port(Point, MAX_POINT_COUNT);
+    instance uram(N=MAX_POINT_COUNT, T=Point, P=3) ports(clk, rst, port_a=ram_port_a, port_b=ram_port_b);
 
     // front
     enum FrontState {
@@ -35,11 +37,17 @@ pub module core(COORD_LIMIT: natural) ports(
     reg front_index_b: uint(0..MAX_POINT_COUNT) = 0;
 
     clocked(clk, async rst) {
+        ram_port_a_write_address = Option.None;
+        ram_port_a_write_data = Point.new(x=0, y=0);
+
         // input handshake
         if (input_points_ready && input_points.valid) {
             if (input_points.data.0) {
                 assert_assume(front_point_count < MAX_POINT_COUNT);
-                ram[front_point_count] = input_points.data.1;
+
+                ram_port_a_write_address = Option.Some(front_point_count);
+                ram_port_a_write_data = input_points.data.1;
+
                 front_point_count += 1;
             } else {
                 if (front_point_count <= 1) {
@@ -98,8 +106,8 @@ pub module core(COORD_LIMIT: natural) ports(
     }
 
     // pipeline/back
-    // TODO try this with register expressions
-    const P = 3 + 2;
+    // TODO refactor this, especially the front/back handshake
+    const P = 3 + 2 + 8;
     reg pipe_index_valid: bool = false;
     reg pipe_index_a: uint(0..MAX_POINT_COUNT) = undef;
     reg pipe_index_b: uint(0..MAX_POINT_COUNT) = undef;
@@ -140,8 +148,23 @@ pub module core(COORD_LIMIT: natural) ports(
         val pipe_index_b = reg(pipe_index_b, undef);
         valid = reg(valid, false);
 
-        val pipe_point_a = reg(ram[pipe_index_a], undef);
-        val pipe_point_b = reg(ram[pipe_index_b], undef);
+        if (valid) {
+            ram_port_a_read_address = Option.Some(pipe_index_a);
+            ram_port_b_read_address = Option.Some(pipe_index_b);
+        } else {
+            ram_port_a_read_address = Option.None;
+            ram_port_b_read_address = Option.None;
+        }
+        valid = reg(valid, false);
+
+        valid = reg(valid, false);
+        valid = reg(valid, false);
+        valid = reg(valid, false);
+        valid = reg(valid, false);
+        valid = reg(valid, false);
+
+        val pipe_point_a = reg(ram_port_a.read_data, undef);
+        val pipe_point_b = reg(ram_port_b.read_data, undef);
         valid = reg(valid, false);
 
         val pipe_abs_a = reg(abs(pipe_point_a.x - pipe_point_b.x) + 1, undef);
@@ -160,9 +183,50 @@ pub module core(COORD_LIMIT: natural) ports(
     reg input_points_ready: bool = false;
     reg output_area_valid: bool = false;
     reg output_area_data: Area = undef;
+
+    reg ram_port_a_write_address: Option(uint(0..MAX_POINT_COUNT)) = Option.None;
+    reg ram_port_a_write_data: sync(clk, rst) Point = undef;
+    reg ram_port_a_read_address: sync(clk, rst) Option(uint(0..MAX_POINT_COUNT)) = Option.None;
+    reg ram_port_b_read_address: sync(clk, rst) Option(uint(0..MAX_POINT_COUNT)) = Option.None;
+
     comb {
         input_points.ready = input_points_ready;
         output_area.valid = output_area_valid;
         output_area.data = output_area_data;
+
+        ram_port_a.mem_enable = false;
+        ram_port_a.write_enable = false;
+        ram_port_a.address = 0;
+        ram_port_a.write_data = Point.new(x=0, y=0);
+        ram_port_b.mem_enable = false;
+        ram_port_b.write_enable = false;
+        ram_port_b.address = 0;
+        ram_port_b.write_data = Point.new(x=0, y=0);
+
+        match (ram_port_a_write_address) {
+            .Some(val addr) => {
+                ram_port_a.mem_enable = true;
+                ram_port_a.write_enable = true;
+                ram_port_a.address = addr;
+                ram_port_a.write_data = ram_port_a_write_data;
+            }
+            .None => {
+                match (ram_port_a_read_address) {
+                    .Some(val addr) => {
+                        ram_port_a.mem_enable = true;
+                        ram_port_a.address = addr;
+                    }
+                    .None => {}
+                }
+            }
+        }
+
+        match (ram_port_b_read_address) {
+            .Some(val addr) => {
+                ram_port_b.mem_enable = true;
+                ram_port_b.address = addr;
+            }
+            .None => {}
+        }
     }
 }
