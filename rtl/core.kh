@@ -36,29 +36,6 @@ pub module core(MAX_POINT_COUNT: natural, COORD_LIMIT: natural, RAM_PIPELINE: na
     reg front_index_b: uint(0..MAX_POINT_COUNT) = 0;
 
     clocked(clk, async rst) {
-        ram_port_a_write_address = Option.None;
-        ram_port_a_write_data = Point.new(x=0, y=0);
-
-        // input handshake
-        if (input_points_ready && input_points.valid) {
-            if (input_points.data.0) {
-                assert_assume(front_point_count < MAX_POINT_COUNT);
-
-                ram_port_a_write_address = Option.Some(front_point_count);
-                ram_port_a_write_data = input_points.data.1;
-
-                front_point_count += 1;
-            } else {
-                if (front_point_count <= 1) {
-                    front_state = FrontState.OutputPushWait;
-                } else {
-                    front_index_a = 1;
-                    front_index_b = 0;
-                    front_state = FrontState.Calc;
-                }
-            }
-        }
-
         // output handshake
         if (output_area_valid && output_area.ready) {
             output_area_valid = false;
@@ -117,6 +94,29 @@ pub module core(MAX_POINT_COUNT: natural, COORD_LIMIT: natural, RAM_PIPELINE: na
                     output_area_data = send_area;
 
                     front_state = FrontState.Input;
+                }
+            }
+        }
+
+        // input handshake, write to ram
+        ram_port_a_write_address = Option.None;
+        ram_port_a_write_data = Point.new(x=0, y=0);
+
+        if (input_points_ready && input_points.valid) {
+            if (input_points.data.0) {
+                assert_assume(front_point_count < MAX_POINT_COUNT);
+
+                ram_port_a_write_address = Option.Some(front_point_count);
+                ram_port_a_write_data = input_points.data.1;
+
+                front_point_count += 1;
+            } else {
+                if (front_point_count <= 1) {
+                    front_state = FrontState.OutputPushWait;
+                } else {
+                    front_index_a = 1;
+                    front_index_b = 0;
+                    front_state = FrontState.Calc;
                 }
             }
         }

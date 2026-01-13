@@ -3,9 +3,10 @@ import string.[parse_points, int_to_chars];
 import xilinx_uram.[uram, uram_port];
 import core.core;
 
-const MAX_POINT_COUNT = 1024 * 16;
+// TODO store at least two points per RAM row to more fully use it
+const MAX_POINT_COUNT = 1024 * 4 * 64;
 const COORD_LIMIT = 10**5;
-const RAM_PIPELINE = 3;
+const RAM_PIPELINE = 4;
 
 type Coord = uint(0..COORD_LIMIT);
 type Point = PointGeneral(Coord);
