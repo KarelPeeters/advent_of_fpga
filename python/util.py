@@ -2,6 +2,10 @@ from pathlib import Path
 from typing import List
 import hwl
 
+EXTRA_VERILOG_FILES = [
+    Path(__file__).parent / "../rtl/xilinx_uram.v",
+]
+
 
 def compile_manifest() -> hwl.Compile:
     manifest = Path(__file__).parent / "../rtl/hwl.toml"
@@ -10,7 +14,7 @@ def compile_manifest() -> hwl.Compile:
 
 
 def send_axi_through_module(inst: hwl.VerilatedInstance, input_data: List, max_cycles: int) -> List:
-    output = []
+    output: List = []
 
     # reset
     ports = inst.ports

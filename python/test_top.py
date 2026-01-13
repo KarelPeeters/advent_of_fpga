@@ -5,7 +5,7 @@ from typing import List, Tuple
 import hwl
 import random
 
-from util import compile_manifest, send_axi_through_module
+from util import EXTRA_VERILOG_FILES, compile_manifest, send_axi_through_module
 
 
 def test_top_empty(tmp_path: Path):
@@ -58,4 +58,4 @@ def run_and_check_top(inst: hwl.VerilatedInstance, samples: List[Tuple[int, int]
 def top_instance(tmp_path: Path) -> hwl.VerilatedInstance:
     c = compile_manifest()
     m: hwl.Module = c.resolve("top.top")
-    return m.as_verilated(tmp_path).instance()
+    return m.as_verilated(tmp_path, extra_verilog_files=EXTRA_VERILOG_FILES).instance()

@@ -20,10 +20,12 @@ pub external module xilinx_ultraram_true_dual_port(
     }
 )
 
+/// The underlying module does not actually have a reset, we just add it here for convenience.
 pub module uram(N: uint, T: type, P: uint) ports(
     clk: in clock,
+    rst: in async bool,
 
-    sync(clk) {
+    sync(clk, rst) {
         port_a: interface uram_port(T, N).input,
         port_b: interface uram_port(T, N).input,
     }
@@ -41,16 +43,16 @@ pub module uram(N: uint, T: type, P: uint) ports(
     ) ports(
         clk,
 
-        wea=port_a.write_enable,
-        mem_ena=port_a.mem_enable,
-        dina=T.to_bits(port_a.write_data),
-        addra=uint(AWIDTH).to_bits(port_a.address),
+        wea=unsafe_value_with_domain(port_a.write_enable, sync(clk)),
+        mem_ena=unsafe_value_with_domain(port_a.mem_enable, sync(clk)),
+        dina=unsafe_value_with_domain(T.to_bits(port_a.write_data), sync(clk)),
+        addra=unsafe_value_with_domain(uint(AWIDTH).to_bits(port_a.address), sync(clk)),
         douta=read_data_a,
 
-        web=port_b.write_enable,
-        mem_enb=port_b.mem_enable,
-        dinb=T.to_bits(port_b.write_data),
-        addrb=uint(AWIDTH).to_bits(port_b.address),
+        web=unsafe_value_with_domain(port_b.write_enable, sync(clk)),
+        mem_enb=unsafe_value_with_domain(port_b.mem_enable, sync(clk)),
+        dinb=unsafe_value_with_domain(T.to_bits(port_b.write_data), sync(clk)),
+        addrb=unsafe_value_with_domain(uint(AWIDTH).to_bits(port_b.address), sync(clk)),
         doutb=read_data_b,
     );
 
