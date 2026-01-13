@@ -5,39 +5,25 @@ from typing import List, Tuple
 import hwl
 import random
 
+import pytest
+
 from util import EXTRA_VERILOG_FILES, compile_manifest, send_axi_through_module
 
-
-def test_top_empty(tmp_path: Path):
-    inst = top_instance(tmp_path)
-    assert run_and_check_top(inst, []) == 0
-
-
-def test_top_single(tmp_path: Path):
-    inst = top_instance(tmp_path)
-    assert run_and_check_top(inst, [(16, 32)]) == 1
-
-
-def test_top_double(tmp_path: Path):
-    inst = top_instance(tmp_path)
-    assert run_and_check_top(inst, [(16, 32), (20, 30)]) == 15
-
-
 # TODO test some edge cases, eg. 0,0, max values, or a bunch of short pairs in sequence
-def test_top_random(tmp_path: Path):
+
+
+@pytest.mark.parametrize("n", list(range(8)) + [64])
+def test_top_random(n: int, tmp_path: Path):
     M = 10**5
-    sample_count = 64
 
     random.seed(0x42)
-    samples = [(random.randrange(M), random.randrange(M)) for _ in range(sample_count)]
+    samples = [(random.randrange(M), random.randrange(M)) for _ in range(n)]
 
     inst = top_instance(tmp_path)
     run_and_check_top(inst, samples)
 
 
 def run_and_check_top(inst: hwl.VerilatedInstance, samples: List[Tuple[int, int]]) -> int:
-    # TODO include some edge cases, eg. 0,0, max values, or a bunch of short pairs in sequence
-
     input_string = "".join(f"{x},{y}\n" for x, y in samples) + "\0"
 
     expected_output = max(

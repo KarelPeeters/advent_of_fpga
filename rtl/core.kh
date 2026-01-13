@@ -21,14 +21,16 @@ pub module core(COORD_LIMIT: natural) ports(
     // shared ram
     wire ram_port_a: sync(clk, rst) interface uram_port(Point, MAX_POINT_COUNT);
     wire ram_port_b: sync(clk, rst) interface uram_port(Point, MAX_POINT_COUNT);
-    instance uram(N=MAX_POINT_COUNT, T=Point, P=3) ports(clk, rst, port_a=ram_port_a, port_b=ram_port_b);
+    const RAM_PIPELINE = 2;
+    instance uram(N=MAX_POINT_COUNT, T=Point, P=RAM_PIPELINE) ports(clk, rst, port_a=ram_port_a, port_b=ram_port_b);
 
     // front
     enum FrontState {
         Input,
         Calc,
-        OutputStart,
-        OutputWait,
+        OutputBackReq,
+        OutputBackWaitAck,
+        OutputPushWait,
     }
 
     reg front_state: FrontState = FrontState.Input;
@@ -51,7 +53,7 @@ pub module core(COORD_LIMIT: natural) ports(
                 front_point_count += 1;
             } else {
                 if (front_point_count <= 1) {
-                    front_state = FrontState.OutputStart;
+                    front_state = FrontState.OutputPushWait;
                 } else {
                     front_index_a = 1;
                     front_index_b = 0;
@@ -60,10 +62,15 @@ pub module core(COORD_LIMIT: natural) ports(
             }
         }
 
+        // output handshake
+        if (output_area_valid && output_area.ready) {
+            output_area_valid = false;
+        }
+
         // state machine
         input_points_ready = false;
-        pipe_index_valid = false;
-        back_emit_output = Option.None;
+        front_to_back_index_valid = false;
+        front_to_back_req = false;
 
         match (front_state) {
             .Input => {
@@ -71,9 +78,9 @@ pub module core(COORD_LIMIT: natural) ports(
             }
             .Calc => {
                 // send calc packet
-                pipe_index_valid = true;
-                pipe_index_a = front_index_a;
-                pipe_index_b = front_index_b;
+                front_to_back_index_valid = true;
+                front_to_back_index_a = front_index_a;
+                front_to_back_index_b = front_index_b;
 
                 // increment indices, only visiting a triangle
                 val new_index_b = front_index_b + 1;
@@ -82,7 +89,7 @@ pub module core(COORD_LIMIT: natural) ports(
 
                     val new_index_a = front_index_a + 1;
                     if (new_index_a == front_point_count) {
-                        front_state = FrontState.OutputStart;
+                        front_state = FrontState.OutputBackReq;
                     } else {
                         assert_assume(front_index_a < MAX_POINT_COUNT - 1, "a");
                         front_index_a += 1;
@@ -92,91 +99,83 @@ pub module core(COORD_LIMIT: natural) ports(
                     front_index_b += 1;
                 }
             }
-            .OutputStart => {
+            .OutputBackReq => {
                 // TODO skip this state, wa can inline this away
-                back_emit_output = Option.Some(front_point_count != 0);
-                front_state = FrontState.OutputWait;
+                front_to_back_req = true;
+                front_state = FrontState.OutputBackWaitAck;
             }
-            .OutputWait => {
-                if (back_emit_output_done) {
+            .OutputBackWaitAck => {
+                if (back_to_front_ack) {
+                    front_state = FrontState.OutputPushWait;
+                }
+            }
+            .OutputPushWait => {
+                if (!output_area_valid) {
+                    var send_area = back_max_area;
+                    if (send_area == 0 && front_point_count != 0) {
+                        send_area = 1;
+                    }
+
+                    output_area_valid = true;
+                    output_area_data = send_area;
+
                     front_state = FrontState.Input;
                 }
             }
         }
     }
 
-    // pipeline/back
-    // TODO refactor this, especially the front/back handshake
-    const P = 3 + 2 + 8;
-    reg pipe_index_valid: bool = false;
-    reg pipe_index_a: uint(0..MAX_POINT_COUNT) = undef;
-    reg pipe_index_b: uint(0..MAX_POINT_COUNT) = undef;
+    // back pipeline
+    struct BackState {
+        valid: bool,
+        req: bool,
+    }
+    fn reg_state(s: BackState) -> BackState {
+        return reg(s, BackState.new(valid=false, req=false));
+    }
 
-    reg back_emit_output: Option(bool) = Option.None;
-    reg back_emit_output_delay: [P]Option(bool) = [Option(bool).None] * P;
-    reg back_emit_output_done: bool = false;
+    reg front_to_back_index_valid: bool = false;
+    reg front_to_back_index_a: uint(0..MAX_POINT_COUNT) = undef;
+    reg front_to_back_index_b: uint(0..MAX_POINT_COUNT) = undef;
+
+    reg front_to_back_req: bool = false;
+    reg back_to_front_ack: bool = false;
 
     reg back_max_area: Area = 0;
 
     clocked(clk, async rst) {
-        // output handshake
-        if (output_area_valid && output_area.ready) {
-            output_area_valid = false;
-            back_emit_output_done = true;
-        }
+        var state = BackState.new(valid=front_to_back_index_valid, req=front_to_back_req);
 
-        // push output
-        back_emit_output_delay = [*back_emit_output_delay[1..], back_emit_output];
-        match (back_emit_output_delay[0]) {
-            .Some(val any_points) => {
-                var send_area = back_max_area;
-                if (send_area == 0 && any_points) {
-                    send_area = 1;
-                }
+        val pipe_index_a = reg(front_to_back_index_a, undef);
+        val pipe_index_b = reg(front_to_back_index_b, undef);
+        state = reg_state(state);
 
-                assert(!output_area_valid);
-                output_area_valid = true;
-                output_area_data = send_area;
-            }
-            .None => {}
-        }
-
-        // pipeline
-        var valid = pipe_index_valid;
-
-        val pipe_index_a = reg(pipe_index_a, undef);
-        val pipe_index_b = reg(pipe_index_b, undef);
-        valid = reg(valid, false);
-
-        if (valid) {
+        if (state.valid) {
             ram_port_a_read_address = Option.Some(pipe_index_a);
             ram_port_b_read_address = Option.Some(pipe_index_b);
         } else {
             ram_port_a_read_address = Option.None;
             ram_port_b_read_address = Option.None;
         }
-        valid = reg(valid, false);
-
-        valid = reg(valid, false);
-        valid = reg(valid, false);
-        valid = reg(valid, false);
-        valid = reg(valid, false);
-        valid = reg(valid, false);
+        for (_ in 0..RAM_PIPELINE + 3) {
+            state = reg_state(state);
+        }
 
         val pipe_point_a = reg(ram_port_a.read_data, undef);
         val pipe_point_b = reg(ram_port_b.read_data, undef);
-        valid = reg(valid, false);
+        state = reg_state(state);
 
         val pipe_abs_a = reg(abs(pipe_point_a.x - pipe_point_b.x) + 1, undef);
         val pipe_abs_b = reg(abs(pipe_point_a.y - pipe_point_b.y) + 1, undef);
-        valid = reg(valid, false);
+        state = reg_state(state);
 
         val pipe_mul = reg(pipe_abs_a * pipe_abs_b, undef);
-        valid = reg(valid, false);
+        state = reg_state(state);
 
-        if (valid) {
+        if (state.valid) {
             back_max_area = max(back_max_area, pipe_mul);
         }
+        back_to_front_ack = state.req;
     }
 
     // intermediate registers, we don't support interface registers yet
