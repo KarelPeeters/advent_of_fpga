@@ -3,13 +3,14 @@ import string.[parse_points, int_to_chars];
 import xilinx_uram.[uram, uram_port];
 import core.core;
 
+const MAX_POINT_COUNT = 1024 * 16;
 const COORD_LIMIT = 10**5;
+const RAM_PIPELINE = 3;
+
 type Coord = uint(0..COORD_LIMIT);
 type Point = PointGeneral(Coord);
 const AREA_LIMIT = COORD_LIMIT**2 + 2;
 type Area = uint(0..AREA_LIMIT);
-
-const MAX_POINT_COUNT = 128;
 
 module top ports(
     clk: in clock,
@@ -24,6 +25,15 @@ module top ports(
     wire output_ints: interface axi_stream(Area);
 
     instance parse_points(M=COORD_LIMIT) ports(clk, rst, input, output=input_points);
-    instance core(COORD_LIMIT=COORD_LIMIT) ports(clk, rst, input_points=input_points, output_area=output_ints);
+    instance core(
+        MAX_POINT_COUNT=MAX_POINT_COUNT,
+        COORD_LIMIT=COORD_LIMIT,
+        RAM_PIPELINE=RAM_PIPELINE,
+    ) ports(
+        clk,
+        rst,
+        input_points=input_points,
+        output_area=output_ints,
+    );
     instance int_to_chars(M=AREA_LIMIT) ports(clk, rst, input=output_ints, output);
 }

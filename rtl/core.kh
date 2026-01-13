@@ -2,9 +2,7 @@ import common.[char, Point as PointGeneral, axi_stream];
 import string.[parse_points, int_to_chars];
 import xilinx_uram.[uram, uram_port];
 
-const MAX_POINT_COUNT = 128;
-
-pub module core(COORD_LIMIT: natural) ports(
+pub module core(MAX_POINT_COUNT: natural, COORD_LIMIT: natural, RAM_PIPELINE: natural) ports(
     type Coord = uint(0..COORD_LIMIT);
     type Point = PointGeneral(Coord);
     const AREA_LIMIT = COORD_LIMIT**2 + 2;
@@ -21,7 +19,6 @@ pub module core(COORD_LIMIT: natural) ports(
     // shared ram
     wire ram_port_a: sync(clk, rst) interface uram_port(Point, MAX_POINT_COUNT);
     wire ram_port_b: sync(clk, rst) interface uram_port(Point, MAX_POINT_COUNT);
-    const RAM_PIPELINE = 2;
     instance uram(N=MAX_POINT_COUNT, T=Point, P=RAM_PIPELINE) ports(clk, rst, port_a=ram_port_a, port_b=ram_port_b);
 
     // front
