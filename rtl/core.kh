@@ -99,7 +99,7 @@ pub module core(COORD_LIMIT: natural) ports(
 
     // pipeline/back
     // TODO try this with register expressions
-    const P = 3 + 1;
+    const P = 3 + 2;
     reg pipe_index_valid: bool = false;
     reg pipe_index_a: uint(0..MAX_POINT_COUNT) = undef;
     reg pipe_index_b: uint(0..MAX_POINT_COUNT) = undef;
@@ -135,6 +135,10 @@ pub module core(COORD_LIMIT: natural) ports(
 
         // pipeline
         var valid = pipe_index_valid;
+
+        val pipe_index_a = reg(pipe_index_a, undef);
+        val pipe_index_b = reg(pipe_index_b, undef);
+        valid = reg(valid, false);
 
         val pipe_point_a = reg(ram[pipe_index_a], undef);
         val pipe_point_b = reg(ram[pipe_index_b], undef);
