@@ -1,3 +1,4 @@
+import math
 from pathlib import Path
 import hwl
 import random
@@ -45,9 +46,10 @@ def test_int_to_chars(tmp_path: Path):
     inst = m.as_verilated(tmp_path).instance()
 
     random.seed(0x42)
-    values = [random.randrange(M) for _ in range(sample_count)]
+    values = list(range(20)) + [random.randrange(M) for _ in range(sample_count)]
     expected_output_string = "\n".join(str(v) for v in values) + "\n"
 
-    output = send_axi_through_module(inst, values, max_cycles=5 * len(expected_output_string) + 16)
+    max_cycles = 2 * math.ceil(math.log2(M)) * len(expected_output_string) + 16
+    output = send_axi_through_module(inst, values, max_cycles=max_cycles)
     output_string = "".join(chr(x) for x in output)
     assert output_string == expected_output_string

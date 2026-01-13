@@ -46,7 +46,7 @@ def run_and_check_top(inst: hwl.VerilatedInstance, samples: List[Tuple[int, int]
     )
     expected_output_str = str(expected_output) + "\n"
 
-    max_cycles = len(input_string) + len(samples) ** 2 // 2 + 32
+    max_cycles = len(input_string) + len(samples) ** 2 // 2 + 1024
     output = send_axi_through_module(inst, [ord(c) for c in input_string], max_cycles=max_cycles)
 
     output_str = "".join(chr(c) for c in output)

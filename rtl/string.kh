@@ -1,7 +1,5 @@
 import common.[axi_stream, Point, char, char_newline, char_comma, char_digit_0];
-import div.[
-    div_by_const, DivMagic, compute_div_magic, DivPipeline, div_by_const_pipelined_0, div_by_const_pipelined_1,
-];
+import std.math.ceil_div;
 
 // Parse a stream of ascii characters into a stream of points.
 // TODO expand to parse multiple values in parallel
@@ -103,26 +101,28 @@ pub module int_to_chars(M: natural) ports(
     const MAX_DIGITS = clog(10, M);
     enum State {
         AcceptInput,
-        CalcDigitStage0,
-        CalcDigitStage1,
-        CalcDigitStage2,
+        CalcDigit0,
+        CalcDigit1,
         EmitDigits,
     }
 
     reg state: State = State.AcceptInput;
-    reg value: uint(0..M) = 0;
     reg digits: [MAX_DIGITS]uint(0..10) = [0] * MAX_DIGITS;
     reg digit_count: uint(0..MAX_DIGITS + 1) = 0;
 
-    const DIV_10_MAGIC = compute_div_magic(M, 10);
-    reg div_pipe: DivPipeline(DIV_10_MAGIC) = undef;
-    reg div: uint(0..=(M - 1) / 10) = 0;
+    const div_iterations = clog2(ceil_div(M, 10));
+    reg div_counter: uint(0..=div_iterations) = 0;
+    reg div_remainder: uint(0..M) = 0;
+    reg div_result: [div_iterations]bool = [false] * div_iterations;
+    reg div_sub: int(-10 * 2**(div_iterations - 1)..M) = 0;
 
     clocked(clk, async rst) {
         // input handshake
         if (input_ready && input.valid) {
-            value = input.data;
-            state = State.CalcDigitStage0;
+            state = State.CalcDigit0;
+            div_counter = 0;
+            div_remainder = input.data;
+            div_result = [false] * div_iterations;
         }
 
         // output handshake
@@ -135,29 +135,45 @@ pub module int_to_chars(M: natural) ports(
             .AcceptInput => {
                 input_ready = true;
             }
-            .CalcDigitStage0 => {
-                div_pipe = div_by_const_pipelined_0(DIV_10_MAGIC, value);
-                state = State.CalcDigitStage1;
-            }
-            .CalcDigitStage1 => {
-                div = div_by_const_pipelined_1(DIV_10_MAGIC, div_pipe);
-                state = State.CalcDigitStage2;
-            }
-            .CalcDigitStage2 => {
-                assert_assume(digit_count < MAX_DIGITS);
-
-                val digit = value - div * 10;
-                assert_assume(0 <= digit && digit < 10);
-
-                value = div;
-                digits = [digit, *digits[..MAX_DIGITS - 1]];
-                digit_count += 1;
-
-                if (value == 0) {
-                    state = State.EmitDigits;
+            .CalcDigit0 => {
+                if (div_counter < div_iterations) {
+                    // start next division step
+                    div_sub = div_remainder - 10 * 2**(div_iterations - div_counter - 1);
+                    state = State.CalcDigit1;
                 } else {
-                    state = State.CalcDigitStage0;
+                    // save digit
+                    assert_assume(div_remainder < 10, "remainder too large");
+                    assert_assume(digit_count < MAX_DIGITS, "too many digits");
+                    digits = [div_remainder, *digits[..MAX_DIGITS - 1]];
+                    digit_count += 1;
+
+                    val next_value = uint(div_iterations).from_bits(div_result);
+
+                    if (next_value != 0) {
+                        // start next digit calculation
+                        div_counter = 0;
+                        div_remainder = next_value;
+                        div_result = [false] * div_iterations;
+                    } else {
+                        // done calculating digits
+                        state = State.EmitDigits;
+                    }
                 }
+            }
+            .CalcDigit1 => {
+                // finish step
+                // TODO why did this need a separate pipeline stage,
+                //   does vivado really not understand it can just look at the sign bit?
+                val div_bit = div_sub >= 0;
+                if (div_bit) {
+                    div_remainder = div_sub;
+                }
+                div_result = [div_bit, *div_result[..div_iterations - 1]];
+
+                assert_assume(div_counter < div_iterations, "div_counter overflow");
+                div_counter += 1;
+
+                state = State.CalcDigit0;
             }
             .EmitDigits => {
                 if (!output_valid) {
