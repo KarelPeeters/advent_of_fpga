@@ -198,6 +198,7 @@ pub module core(
     }
 
     clocked(clk, async rst) {
+        // convert command to state
         var state;
         val pipe_index_a;
         val pipe_index_b;
@@ -224,6 +225,7 @@ pub module core(
             }
         }
 
+        // start ram read and wait for the data to come back
         if (state.valid) {
             ram_port_a_read_address = Option.Some(pipe_index_a);
             ram_port_b_read_address = Option.Some(pipe_index_b);
@@ -235,10 +237,12 @@ pub module core(
             state = reg_state(state);
         }
 
+        // read ram output
         val pipe_word_a = reg(ram_port_a.read_data, undef);
         val pipe_word_b = reg(ram_port_b.read_data, undef);
         state = reg_state(state);
 
+        // calculate areas
         val value_abs_x = [
             [abs((pipe_word_a[i]).x - (pipe_word_b[j]).x) + 1 for j in 0..CORE_WIDTH]
             for i in 0..CORE_WIDTH
@@ -256,15 +260,26 @@ pub module core(
         val pipe_mul = reg(value_mul, undef);
         state = reg_state(state);
 
+        // tree-reduce areas
+        var pipe_array_len = CORE_WIDTH * CORE_WIDTH;
+        var pipe_array = [
+            *[select(state.mask_a[i] && state.mask_b[j], pipe_mul[i][j], 0) for j in 0..CORE_WIDTH]
+            for i in 0..CORE_WIDTH
+        ];
+        while (pipe_array_len > 1) {
+            pipe_array = [
+                *[max(pipe_array[2 * i], pipe_array[2 * i + 1]) for i in 0..pipe_array_len / 2],
+                *pipe_array[pipe_array_len / 2 * 2..],
+            ];
+            pipe_array_len = ceil_div(pipe_array_len, 2);
+
+            pipe_array = reg(pipe_array, undef);
+            state = reg_state(state);
+        }
+
+        // store max area
         if (state.valid) {
-            // TODO tree reduction, or is there something even better?
-            for (i in 0..CORE_WIDTH) {
-                for (j in 0..CORE_WIDTH) {
-                    if (state.mask_a[i] && state.mask_b[j]) {
-                        back_max_area = max(back_max_area, pipe_mul[i][j]);
-                    }
-                }
-            }
+            back_max_area = max(back_max_area, pipe_array[0]);
         }
         back_to_front_ack = state.req;
     }
@@ -321,7 +336,16 @@ pub module core(
     }
 }
 
+fn select(c: bool, a: any, b: any) -> any {
+    if (c) {
+        return a;
+    } else {
+        return b;
+    }
+}
+
 const {
     core(MAX_POINT_COUNT=1024, COORD_LIMIT=2**8, RAM_PIPELINE=2, CORE_WIDTH=1);
     core(MAX_POINT_COUNT=1024, COORD_LIMIT=2**8, RAM_PIPELINE=2, CORE_WIDTH=2);
+    core(MAX_POINT_COUNT=1024, COORD_LIMIT=2**8, RAM_PIPELINE=2, CORE_WIDTH=3);
 }
