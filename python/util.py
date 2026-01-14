@@ -40,10 +40,13 @@ def send_axi_through_module(inst: hwl.VerilatedInstance, input_data: List, max_c
             ports.input_data.value = input_data[0]
             input_data = input_data[1:]
 
+            if not input_data:
+                print(f"Last input sent at cycle {i}")
+
         # handle output handshake, collect output
         if ports.output_valid.value and ports.output_ready.value:
             if not output:
-                print(f"First output at cycle {i}")
+                print(f"First output received at cycle {i}")
 
             output.append(ports.output_data.value)
         ports.output_ready.value = True

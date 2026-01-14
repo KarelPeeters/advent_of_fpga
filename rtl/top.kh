@@ -7,6 +7,7 @@ import core.core;
 const MAX_POINT_COUNT = 1024 * 4 * 64;
 const COORD_LIMIT = 10**5;
 const RAM_PIPELINE = 7;
+const CORE_WIDTH = 2;
 
 type Coord = uint(0..COORD_LIMIT);
 type Point = PointGeneral(Coord);
@@ -30,6 +31,7 @@ module top ports(
         MAX_POINT_COUNT=MAX_POINT_COUNT,
         COORD_LIMIT=COORD_LIMIT,
         RAM_PIPELINE=RAM_PIPELINE,
+        CORE_WIDTH=CORE_WIDTH,
     ) ports(
         clk,
         rst,
