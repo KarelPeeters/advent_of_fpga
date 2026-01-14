@@ -42,13 +42,12 @@ pub module core(MAX_POINT_COUNT: natural, COORD_LIMIT: natural, RAM_PIPELINE: na
         }
 
         // state machine
-        input_points_ready = false;
         front_to_back_index_valid = false;
         front_to_back_req = false;
 
         match (front_state) {
             .Input => {
-                input_points_ready = true;
+                // handled later
             }
             .Calc => {
                 // send calc packet
@@ -94,6 +93,7 @@ pub module core(MAX_POINT_COUNT: natural, COORD_LIMIT: natural, RAM_PIPELINE: na
                     output_area_data = send_area;
 
                     front_state = FrontState.Input;
+                    front_point_count = 0;
                 }
             }
         }
@@ -118,6 +118,16 @@ pub module core(MAX_POINT_COUNT: natural, COORD_LIMIT: natural, RAM_PIPELINE: na
                     front_index_b = 0;
                     front_state = FrontState.Calc;
                 }
+            }
+        }
+
+        // input ready signal
+        match (front_state) {
+            .Input => {
+                input_points_ready = true;
+            }
+            _ => {
+                input_points_ready = false;
             }
         }
     }
