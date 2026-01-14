@@ -1,0 +1,42 @@
+module transpose(N: uint, T: type) ports(
+    clk: in clock,
+    rst: in async bool,
+
+    sync(clk, rst) {
+        data_in: in [N]T,
+        data_out: out [N]T,
+    }
+) {
+    reg out data_out = undef;
+
+    if (N == 0) {
+        clocked(clk, async rst) {
+            data_out = data_in;
+        }
+    } else {
+        reg data_delayed: [2 * N][N]T = undef;
+        reg state_i: uint(0..N) = 0;
+
+        clocked(clk, async rst) {
+            // first extract the possible diagonal with only constant indexing, then mux that diagonal
+            //   this ensures synthesis generates single short mux per output element
+            data_out = [
+                {
+                    val diag = [data_delayed[N - 1 - j + potential_i][potential_i] for potential_i in 0..N];
+                    diag[state_i]
+                }
+                for j in 0..N
+            ];
+
+            data_delayed = [data_in, *data_delayed[..2 * N - 1]];
+            state_i = (state_i + 1) % N;
+        }
+    }
+}
+
+const {
+    transpose(N=0, T=uint(8));
+    transpose(N=1, T=uint(8));
+    transpose(N=2, T=uint(8));
+    transpose(N=3, T=uint(8));
+}
