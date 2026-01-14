@@ -1,5 +1,5 @@
 from pathlib import Path
-from typing import List
+from typing import Any, List, Optional
 import hwl
 
 EXTRA_VERILOG_FILES = [
@@ -13,7 +13,9 @@ def compile_manifest() -> hwl.Compile:
     return source.compile()
 
 
-def send_axi_through_module(inst: hwl.VerilatedInstance, input_data: List, max_cycles: int) -> List:
+def send_axi_through_module(
+    inst: hwl.VerilatedInstance, input_data: List, max_cycles: int, output_end: Optional[Any] = None
+) -> List:
     output: List = []
 
     # reset
@@ -48,7 +50,13 @@ def send_axi_through_module(inst: hwl.VerilatedInstance, input_data: List, max_c
             if not output:
                 print(f"First output received at cycle {i}")
 
-            output.append(ports.output_data.value)
+            output_value = ports.output_data.value
+            output.append(output_value)
+
+            if output_end is not None and output_value == output_end:
+                print(f"Output end {output_end} received at cycle {i}")
+                break
+
         ports.output_ready.value = True
 
     assert input_data == [], "Failed to send all input"
