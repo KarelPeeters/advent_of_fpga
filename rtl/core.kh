@@ -39,6 +39,7 @@ pub module core(
 
     reg front_state: FrontState = FrontState.Input;
     reg front_point_count: uint(0..=MAX_POINT_COUNT) = 0;
+    reg front_block_count: uint(0..=RAM_DEPTH) = 0;
     reg front_index_a: uint(0..RAM_DEPTH) = 0;
     reg front_index_b: uint(0..RAM_DEPTH) = 0;
 
@@ -71,11 +72,10 @@ pub module core(
                 );
 
                 // increment indices, only visiting the triangle where `b <= a`
-                val block_count = ceil_div(front_point_count, CORE_WIDTH);
                 if (front_index_b == front_index_a) {
                     front_index_b = 0;
 
-                    if (front_index_a == block_count - 1) {
+                    if (front_index_a == front_block_count - 1) {
                         front_state = FrontState.OutputBackReq;
                     } else {
                         assert_assume(front_index_a < RAM_DEPTH - 1);
@@ -147,6 +147,7 @@ pub module core(
                 if (front_point_count <= 1) {
                     front_state = FrontState.OutputPushWait;
                 } else {
+                    front_block_count = ceil_div(front_point_count, CORE_WIDTH);
                     front_index_a = 0;
                     front_index_b = 0;
                     front_state = FrontState.Calc;
@@ -238,26 +239,31 @@ pub module core(
         }
 
         // read ram output
-        val pipe_word_a = reg(ram_port_a.read_data, undef);
-        val pipe_word_b = reg(ram_port_b.read_data, undef);
+        var pipe_word_a = reg(ram_port_a.read_data, undef);
+        var pipe_word_b = reg(ram_port_b.read_data, undef);
+        state = reg_state(state);
+        pipe_word_a = reg(pipe_word_a, undef);
+        pipe_word_b = reg(pipe_word_b, undef);
         state = reg_state(state);
 
         // calculate areas
-        val value_abs_x = [
-            [abs((pipe_word_a[i]).x - (pipe_word_b[j]).x) + 1 for j in 0..CORE_WIDTH]
-            for i in 0..CORE_WIDTH
-        ];
-        val value_abs_y = [
-            [abs((pipe_word_a[i]).y - (pipe_word_b[j]).y) + 1 for j in 0..CORE_WIDTH]
-            for i in 0..CORE_WIDTH
-        ];
+        val value_delta_x = [[(pipe_word_a[i]).x - (pipe_word_b[j]).x for j in 0..CORE_WIDTH] for i in 0..CORE_WIDTH];
+        val value_delta_y = [[(pipe_word_a[i]).y - (pipe_word_b[j]).y for j in 0..CORE_WIDTH] for i in 0..CORE_WIDTH];
+        val pipe_delta_x = reg(value_delta_x, undef);
+        val pipe_delta_y = reg(value_delta_y, undef);
+        state = reg_state(state);
 
-        val pipe_abs_x = reg(value_abs_x, undef);
-        val pipe_abs_y = reg(value_abs_y, undef);
+        val pipe_abs1_x = reg([[abs(dx) for dx in rx] for rx in pipe_delta_x], undef);
+        val pipe_abs1_y = reg([[abs(dy) for dy in ry] for ry in pipe_delta_y], undef);
+        state = reg_state(state);
+
+        val pipe_abs_x = reg([[dx + 1 for dx in rx] for rx in pipe_abs1_x], undef);
+        val pipe_abs_y = reg([[dy + 1 for dy in ry] for ry in pipe_abs1_y], undef);
         state = reg_state(state);
 
         val value_mul = [[pipe_abs_x[i][j] * pipe_abs_y[i][j] for j in 0..CORE_WIDTH] for i in 0..CORE_WIDTH];
-        val pipe_mul = reg(value_mul, undef);
+        val pipe_mul = reg(reg(value_mul, undef), undef);
+        state = reg_state(state);
         state = reg_state(state);
 
         // tree-reduce areas
@@ -266,9 +272,14 @@ pub module core(
             *[select(state.mask_a[i] && state.mask_b[j], pipe_mul[i][j], 0) for j in 0..CORE_WIDTH]
             for i in 0..CORE_WIDTH
         ];
+        pipe_array = reg(pipe_array, undef);
+        state = reg_state(state);
+
         while (pipe_array_len > 1) {
             pipe_array = [
+                // pairwise reduce
                 *[max(pipe_array[2 * i], pipe_array[2 * i + 1]) for i in 0..pipe_array_len / 2],
+                // preserve the final odd element if any
                 *pipe_array[pipe_array_len / 2 * 2..],
             ];
             pipe_array_len = ceil_div(pipe_array_len, 2);
