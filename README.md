@@ -1,6 +1,6 @@
 # Advent of FPGA
 
-My submission to Jane Street's Advent of FPGA Challenge 2025.
+My submission to [Jane Street's Advent of FPGA Challenge 2025](https://blog.janestreet.com/advent-of-fpga-challenge-2025/).
 
 Implements [Advent of code 2025 day 9 part 1](https://adventofcode.com/2025/day/9), targeting the [Zynq UltraScale+ Kria KV260](https://www.amd.com/en/products/system-on-modules/kria/k26/kv260-vision-starter-kit.html)
 
