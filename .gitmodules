@@ -1,0 +1,3 @@
+[submodule "external/HwLang"]
+	path = external/hwlang
+	url = https://github.com/KarelPeeters/HwLang
