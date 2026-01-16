@@ -132,6 +132,12 @@ pub module core(
                     front_write_level += 1;
                 }
 
+                // keep `front_block_count == ceil_div(front_point_count, CORE_WIDTH)`
+                if (front_point_count % CORE_WIDTH == 0) {
+                    assert_assume(front_block_count < RAM_DEPTH);
+                    front_block_count += 1;
+                }
+
                 front_point_count += 1;
             } else {
                 // if anything left in buffer, write it to ram
@@ -144,10 +150,9 @@ pub module core(
 
                 // if nothing to calculate, go to output directly,
                 //  otherwise start calculating
-                if (front_point_count <= 1) {
+                if (front_point_count == 0 || front_point_count == 1) {
                     front_state = FrontState.OutputPushWait;
                 } else {
-                    front_block_count = ceil_div(front_point_count, CORE_WIDTH);
                     front_index_a = 0;
                     front_index_b = 0;
                     front_state = FrontState.Calc;
